@@ -1,0 +1,365 @@
+# TP4 – MapReduce avec MongoDB
+**Étudiant : ROTY Saad**  
+**Module : Bases de Données NoSQL**
+
+---
+
+## 1. Introduction
+
+Ce TP a pour objectif d’explorer le mécanisme **MapReduce** proposé par MongoDB à partir
+d’une collection de films déjà utilisée dans les précédents travaux pratiques.
+
+MongoDB permet de réaliser des traitements analytiques distribués en combinant :
+- une fonction `map` pour produire des paires clé/valeur,
+- une fonction `reduce` pour agréger les résultats,
+- éventuellement une fonction `finalize` pour post-traiter les données.
+
+Chaque exercice correspond à un traitement MapReduce appliqué sur la collection `films`.
+
+La commande générale utilisée est la suivante :
+
+db.films.mapReduce(mapFunction, reduceFunction, { out: "resultat" })
+
+---
+
+## 2. Exercices MapReduce
+
+---
+
+## 2.1 Nombre total de films
+
+Fonction Map :
+
+function () {
+  emit("total", 1);
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return Array.sum(values);
+}
+
+---
+
+## 2.2 Nombre de films par genre
+
+Fonction Map :
+
+function () {
+  if (this.genre) {
+    this.genre.forEach(function(g) {
+      emit(g, 1);
+    });
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return Array.sum(values);
+}
+
+---
+
+## 2.3 Nombre de films par réalisateur
+
+Fonction Map :
+
+function () {
+  if (this.director) {
+    emit(this.director, 1);
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return Array.sum(values);
+}
+
+---
+
+## 2.4 Nombre d’acteurs uniques
+
+Fonction Map :
+
+function () {
+  if (this.actors) {
+    this.actors.forEach(function(actor) {
+      emit(actor, 1);
+    });
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return 1;
+}
+
+---
+
+## 2.5 Nombre de films par année de sortie
+
+Fonction Map :
+
+function () {
+  if (this.year) {
+    emit(this.year, 1);
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return Array.sum(values);
+}
+
+---
+
+## 2.6 Note moyenne par film
+
+Fonction Map :
+
+function () {
+  if (this.grades && this.grades.length > 0) {
+    var sum = 0;
+    this.grades.forEach(function(g) {
+      sum += g.score;
+    });
+    emit(this.title, sum / this.grades.length);
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return Array.sum(values) / values.length;
+}
+
+---
+
+## 2.7 Note moyenne par genre
+
+Fonction Map :
+
+function () {
+  if (this.genre && this.grades) {
+    var avg = this.grades.reduce(function(a, b) {
+      return a + b.score;
+    }, 0) / this.grades.length;
+
+    this.genre.forEach(function(g) {
+      emit(g, avg);
+    });
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return Array.sum(values) / values.length;
+}
+
+---
+
+## 2.8 Note moyenne par réalisateur
+
+Fonction Map :
+
+function () {
+  if (this.director && this.grades) {
+    var moyenne = this.grades.reduce(function(a, b) {
+      return a + b.score;
+    }, 0) / this.grades.length;
+
+    emit(this.director, moyenne);
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return Array.sum(values) / values.length;
+}
+
+---
+
+## 2.9 Film ayant la note maximale
+
+Fonction Map :
+
+function () {
+  if (this.grades) {
+    var maxNote = Math.max.apply(
+      null,
+      this.grades.map(function(g) { return g.score; })
+    );
+    emit(this.title, maxNote);
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return Math.max.apply(null, values);
+}
+
+---
+
+## 2.10 Nombre total de notes supérieures à 70
+
+Fonction Map :
+
+function () {
+  if (this.grades) {
+    var count = this.grades.filter(function(g) {
+      return g.score > 70;
+    }).length;
+    emit("notes_sup_70", count);
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return Array.sum(values);
+}
+
+---
+
+## 2.11 Acteurs par genre (sans doublons)
+
+Fonction Map :
+
+function () {
+  if (this.genre && this.actors) {
+    this.genre.forEach(function(g) {
+      this.actors.forEach(function(a) {
+        emit(g, a);
+      });
+    }, this);
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return Array.from(new Set(values));
+}
+
+---
+
+## 2.12 Acteurs apparaissant dans le plus grand nombre de films
+
+Fonction Map :
+
+function () {
+  if (this.actors) {
+    this.actors.forEach(function(actor) {
+      emit(actor, 1);
+    });
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return Array.sum(values);
+}
+
+---
+
+## 2.13 Classement des films par grade majoritaire
+
+Fonction Map :
+
+function () {
+  if (this.grades) {
+    var freq = {};
+    this.grades.forEach(function(g) {
+      freq[g.grade] = (freq[g.grade] || 0) + 1;
+    });
+
+    var majoritaire = Object.keys(freq).reduce(function(a, b) {
+      return freq[a] > freq[b] ? a : b;
+    });
+
+    emit(majoritaire, this.title);
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return values;
+}
+
+---
+
+## 2.14 Note moyenne par année
+
+Fonction Map :
+
+function () {
+  if (this.year && this.grades) {
+    var moyenne = this.grades.reduce(function(a, b) {
+      return a + b.score;
+    }, 0) / this.grades.length;
+
+    emit(this.year, moyenne);
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  return Array.sum(values) / values.length;
+}
+
+---
+
+## 2.15 Réalisateurs ayant une moyenne supérieure à 80
+
+Fonction Map :
+
+function () {
+  if (this.director && this.grades) {
+    var m = this.grades.reduce(function(a, b) {
+      return a + b.score;
+    }, 0) / this.grades.length;
+
+    emit(this.director, { somme: m, nb: 1 });
+  }
+}
+
+Fonction Reduce :
+
+function (key, values) {
+  var total = { somme: 0, nb: 0 };
+  values.forEach(function(v) {
+    total.somme += v.somme;
+    total.nb += v.nb;
+  });
+  return total;
+}
+
+Fonction Finalize :
+
+function (key, value) {
+  var moyenne = value.somme / value.nb;
+  return moyenne > 80 ? moyenne : null;
+}
+
+---
+
+## 3. Conclusion
+
+Ce TP met en évidence la puissance du modèle MapReduce dans MongoDB pour effectuer
+des analyses distribuées directement au niveau de la base de données.
+
+Même si les agrégations modernes remplacent souvent MapReduce, ce modèle reste
+fondamental pour comprendre les principes de calcul distribué et d’agrégation de données.
+
+---
