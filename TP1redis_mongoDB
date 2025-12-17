@@ -1,0 +1,223 @@
+# TP NoSQL – Redis & MongoDB
+**Étudiant : ROTY Saad**
+
+---
+
+# Partie I – Utilisation de Redis
+
+## 1. Introduction
+
+Redis est une base de données NoSQL de type clé–valeur fonctionnant principalement en mémoire.  
+Elle est conçue pour offrir des temps d’accès très faibles et est couramment utilisée pour la mise en cache, la gestion de sessions ou le stockage de compteurs.
+
+Ce rapport présente l’installation de Redis, l’accès au service et la manipulation des principaux types de données.
+
+---
+
+## 2. Installation et Lancement de Redis
+
+### 2.1 Lancement via Docker
+
+docker run --name redis-db -d -p 6379:6379 redis:latest
+
+- redis-db : nom du conteneur  
+- -d : exécution en arrière-plan  
+- -p 6379:6379 : exposition du port Redis  
+
+---
+
+### 2.2 Vérification du conteneur
+
+docker ps
+
+---
+
+## 3. Connexion à Redis
+
+docker exec -it redis-db redis-cli
+
+---
+
+## 4. Manipulation des Données Redis
+
+### 4.1 Données simples (String)
+
+SET film:1 "Inception"  
+GET film:1
+
+---
+
+### 4.2 Compteur
+
+SET nb_films 0  
+INCR nb_films  
+INCR nb_films
+
+---
+
+### 4.3 Listes
+
+LPUSH acteurs "Leonardo DiCaprio"  
+LPUSH acteurs "Brad Pitt"  
+LRANGE acteurs 0 -1
+
+---
+
+### 4.4 Ensembles (Set)
+
+SADD genres Action Drame Thriller  
+SMEMBERS genres
+
+---
+
+### 4.5 Hashes
+
+HSET film:2 titre "Matrix" annee 1999 genre "Science-Fiction"  
+HGETALL film:2
+
+---
+
+## 5. Suppression des Données
+
+DEL film:1  
+FLUSHALL
+
+---
+
+## 6. Conclusion Redis
+
+Redis est une base de données très rapide et simple à utiliser.  
+Elle est particulièrement adaptée aux besoins nécessitant un accès immédiat aux données, comme le cache ou les statistiques en temps réel.
+
+---
+
+# Partie II – Utilisation de MongoDB
+
+## 1. Introduction
+
+MongoDB est une base de données NoSQL orientée documents utilisant le format BSON, dérivé du JSON.  
+Elle permet de stocker des données complexes sans schéma strict, offrant une grande flexibilité dans la conception des applications.
+
+Cette partie du TP présente l’installation de MongoDB, l’importation de données et l’exécution de requêtes.
+
+---
+
+## 2. Installation et Configuration
+
+### 2.1 Installation avec Docker
+
+docker run --name mongo-db -d -p 27017:27017 -v $(pwd)/mongo-data:/data/db mongo:latest
+
+- mongo-db : nom du conteneur  
+- -v : persistance des données  
+- -p : exposition du port MongoDB  
+
+---
+
+### 2.2 Vérification du conteneur
+
+docker ps
+
+---
+
+## 3. Importation des Données
+
+### 3.1 Copie du fichier JSON dans le conteneur
+
+docker cp films.json mongo-db:/films.json
+
+---
+
+### 3.2 Connexion au conteneur
+
+docker exec -it mongo-db bash
+
+---
+
+### 3.3 Importation dans MongoDB
+
+mongoimport --db cinema --collection films --file /films.json --jsonArray
+
+---
+
+## 4. Requêtes MongoDB
+
+### 4.1 Vérification du nombre de documents
+
+db.films.countDocuments()
+
+---
+
+### 4.2 Visualisation d’un document
+
+db.films.findOne()
+
+---
+
+### 4.3 Requêtes simples
+
+Afficher les films de genre Action
+
+db.films.find({ genre: "Action" })
+
+---
+
+Compter les films d’action
+
+db.films.countDocuments({ genre: "Action" })
+
+---
+
+Films d’action produits en France
+
+db.films.find({ genre: "Action", country: "FR" })
+
+---
+
+## 4.4 Requêtes avancées
+
+Projection de champs (titre et année)
+
+db.films.find({ genre: "Action" }, { _id: 0, title: 1, year: 1 })
+
+---
+
+Films avec au moins une note supérieure à 10
+
+db.films.find({ "grades.note": { $gt: 10 } })
+
+---
+
+Films dont toutes les notes sont supérieures à 10
+
+db.films.find({ grades: { $not: { $elemMatch: { note: { $lte: 10 } } } } })
+
+---
+
+## 4.5 Requêtes logiques
+
+Films avec Leonardo DiCaprio en 1997
+
+db.films.find({ actors: "Leonardo DiCaprio", year: 1997 })
+
+---
+
+Films avec Leonardo DiCaprio ou sortis en 1997
+
+db.films.find({ $or: [ { actors: "Leonardo DiCaprio" }, { year: 1997 } ] })
+
+---
+
+## 5. Gestion du Conteneur MongoDB
+
+docker stop mongo-db  
+docker rm mongo-db
+
+---
+
+## 6. Conclusion MongoDB
+
+MongoDB est une solution puissante et flexible pour le stockage de données semi-structurées.  
+Son modèle orienté documents et sa syntaxe de requêtes intuitive en font un outil très utilisé dans les applications modernes.
+
+---
