@@ -1,0 +1,214 @@
+# TP2 – Réplication MongoDB (Replica Set)
+**Étudiant : ROTY Saad**  
+**Module : Bases de Données NoSQL**
+
+---
+
+## 1. Introduction
+
+MongoDB est une base de données NoSQL orientée documents qui propose nativement des mécanismes de **haute disponibilité** et de **tolérance aux pannes** grâce aux *Replica Sets*.
+
+Un Replica Set permet de répliquer les données sur plusieurs nœuds afin d’assurer la continuité de service en cas de panne et d’éviter la perte de données.  
+Ce TP présente le fonctionnement d’un Replica Set, son déploiement avec Docker et les principales commandes d’administration.
+
+---
+
+## 2. Présentation d’un Replica Set MongoDB
+
+Un Replica Set est un ensemble de processus `mongod` maintenant la même base de données via la réplication d’un journal d’opérations appelé **oplog**.
+
+Il est composé de :
+- un **Primary** : reçoit toutes les écritures ;
+- un ou plusieurs **Secondaries** : répliquent les données du Primary ;
+- éventuellement un **Arbiter** : participe aux votes mais ne stocke pas de données.
+
+Un nombre impair de membres votants est recommandé afin de garantir une majorité lors des élections.
+
+---
+
+## 3. Fonctionnement Général
+
+Le fonctionnement repose sur les étapes suivantes :
+- les clients envoient les écritures au Primary ;
+- le Primary écrit les opérations dans ses collections et dans l’oplog ;
+- les Secondaries lisent l’oplog et appliquent les opérations dans le même ordre ;
+- en cas de panne du Primary, une élection est déclenchée pour en désigner un nouveau.
+
+Ce mécanisme garantit la continuité de service sans intervention manuelle.
+
+---
+
+## 4. Avantages d’un Replica Set
+
+L’utilisation d’un Replica Set apporte :
+- une **haute disponibilité** automatique ;
+- une **tolérance aux pannes** matérielles ou logicielles ;
+- la possibilité de réaliser des **maintenances sans arrêt de service** ;
+- une **répartition des lectures** dans certains scénarios.
+
+---
+
+## 5. Déploiement d’un Replica Set avec Docker
+
+### 5.1 Création du réseau Docker
+
+docker network create mongo-cluster
+
+---
+
+### 5.2 Lancement des conteneurs MongoDB
+
+docker run -d --name mongo1 --net mongo-cluster -p 27017:27017 mongo --replSet rs0 --bind_ip_all  
+docker run -d --name mongo2 --net mongo-cluster -p 27018:27017 mongo --replSet rs0 --bind_ip_all  
+docker run -d --name mongo3 --net mongo-cluster -p 27019:27017 mongo --replSet rs0 --bind_ip_all  
+
+---
+
+### 5.3 Vérification des conteneurs
+
+docker ps
+
+---
+
+## 6. Initialisation du Replica Set
+
+Connexion au premier nœud :
+
+docker exec -it mongo1 mongosh
+
+Initialisation du Replica Set :
+
+rs.initiate({
+  _id: "rs0",
+  members: [
+    { _id: 0, host: "<host_ip>:27017" },
+    { _id: 1, host: "<host_ip>:27018" },
+    { _id: 2, host: "<host_ip>:27019" }
+  ]
+})
+
+---
+
+## 7. Vérification de l’État du Cluster
+
+Afficher l’état des membres :
+
+rs.status().members.map(m => ({ name: m.name, state: m.stateStr }))
+
+Exemple de résultat attendu :
+- PRIMARY
+- SECONDARY
+- SECONDARY
+
+---
+
+## 8. Connexion au Replica Set
+
+Connexion directe à un nœud :
+
+mongosh "mongodb://<host_ip>:27017/?directConnection=true"
+
+Connexion recommandée au Replica Set :
+
+mongosh "mongodb://<host_ip>:27017,<host_ip>:27018,<host_ip>:27019/?replicaSet=rs0"
+
+---
+
+## 9. Lecture et Écriture dans un Replica Set
+
+Par défaut :
+- les **écritures** sont envoyées au Primary ;
+- les **lectures** sont également effectuées sur le Primary.
+
+Il est possible de lire sur un Secondary avec une `readPreference` adaptée, en acceptant un léger retard de réplication.
+
+---
+
+## 10. Gestion des Membres
+
+### 10.1 Identifier le rôle d’un nœud
+
+db.isMaster()
+
+---
+
+### 10.2 Forcer un changement de Primary
+
+rs.stepDown(60)
+
+---
+
+### 10.3 Ajouter un nouveau Secondary
+
+docker run -d --name mongo4 --net mongo-cluster -p 27020:27017 mongo --replSet rs0 --bind_ip_all
+
+Puis depuis le Primary :
+
+rs.add("mongo4:27017")
+
+---
+
+### 10.4 Retirer un nœud
+
+rs.remove("mongo4:27017")
+
+docker stop mongo4  
+docker rm mongo4
+
+---
+
+## 11. Arbitre et Nœuds Spécifiques
+
+Ajout d’un arbitre :
+
+docker run -d --name mongo-arb --net mongo-cluster mongo --replSet rs0 --bind_ip_all
+
+rs.addArb("mongo-arb:27017")
+
+Un arbitre permet d’obtenir une majorité sans stocker de données.
+
+---
+
+## 12. Nœud avec Délai de Réplication
+
+Configuration d’un Secondary retardé :
+
+rs.add({
+  host: "mongo-delayed:27017",
+  priority: 0,
+  hidden: true,
+  slaveDelay: 120
+})
+
+Ce type de nœud est utile pour la récupération d’erreurs humaines ou l’audit.
+
+---
+
+## 13. Tolérance aux Pannes
+
+- Sans majorité, aucun Primary ne peut être élu ;
+- les écritures échouent ;
+- seules certaines lectures sont possibles.
+
+MongoDB empêche le *split-brain* grâce au mécanisme de majorité et à l’auto-dégradation.
+
+---
+
+## 14. Surveillance de la Réplication
+
+Afficher le retard de réplication :
+
+rs.printSlaveReplicationInfo()
+
+Surveiller les logs :
+
+docker logs -f mongo1
+
+---
+
+## 15. Conclusion
+
+Les Replica Sets constituent un élément fondamental de MongoDB pour assurer la disponibilité et la fiabilité des données.  
+Grâce à la réplication, aux élections automatiques et aux mécanismes de majorité, MongoDB offre une solution robuste adaptée aux environnements distribués et aux applications critiques.
+
+---
