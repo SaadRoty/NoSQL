@@ -1,0 +1,240 @@
+# TP3 – Exploration de CouchDB
+**Étudiant : ROTY Saad**  
+**Module : Bases de Données NoSQL**
+
+---
+
+## 1. Introduction
+
+Apache CouchDB est une base de données NoSQL orientée documents reposant sur trois principes fondamentaux :
+- stockage des données au format JSON,
+- accès via une API REST HTTP,
+- traitement analytique basé sur le modèle MapReduce.
+
+Grâce à sa réplication incrémentale et à sa tolérance aux pannes, CouchDB est particulièrement adapté aux systèmes distribués et aux environnements nécessitant une synchronisation entre plusieurs nœuds.
+
+Ce TP présente un modèle de données, des traitements MapReduce ainsi que l’installation et l’utilisation de CouchDB via Docker.
+
+---
+
+## 2. MapReduce et calculs distribués
+
+### 2.1 Problématique
+
+On considère une matrice M de dimension N × N représentant des liens entre un grand nombre de pages web.  
+Chaque coefficient Mij correspond au poids du lien entre la page Pi et la page Pj.
+
+Les objectifs sont :
+- proposer un modèle de documents pour représenter cette matrice creuse ;
+- définir un traitement MapReduce pour calculer la norme de chaque ligne ;
+- définir un traitement MapReduce pour calculer le produit M · W, où W est un vecteur connu en mémoire.
+
+---
+
+## 2.2 Modèle de documents pour représenter la matrice M
+
+La matrice étant très grande et creuse, seuls les coefficients non nuls sont stockés.  
+Chaque document représente une ligne i de la matrice, correspondant à une page source.
+
+Structure générale d’un document :
+
+{
+  "_id": "page:Pi",
+  "type": "page",
+  "index": i,
+  "url": "https://example.org/pi",
+  "outlinks": [
+    { "j": 17, "weight": 0.42 },
+    { "j": 93, "weight": 0.10 }
+  ],
+  "metadata": {
+    "timestamp": "2025-12-16T00:00:00Z"
+  }
+}
+
+Correspondance avec la matrice :
+- chaque document correspond à une ligne i ;
+- chaque élément de outlinks correspond à un coefficient Mij non nul ;
+- les coefficients absents sont implicitement égaux à zéro.
+
+---
+
+## 2.3 MapReduce pour le calcul de la norme des lignes
+
+La norme d’une ligne Mi est définie par :
+
+∥Mi∥ = √( Σj Mij² )
+
+### Principe du traitement
+
+- Map : pour chaque lien sortant, émettre le carré du poids sous la clé i ;
+- Reduce : sommer les valeurs pour obtenir Σj Mij² ;
+- la racine carrée peut être calculée lors du post-traitement.
+
+### Fonction Map
+
+function (doc) {
+  if (doc.type !== "page" || !doc.outlinks) return;
+  for (var k = 0; k < doc.outlinks.length; k++) {
+    var w = doc.outlinks[k].weight;
+    emit(doc.index, w * w);
+  }
+  if (doc.outlinks.length === 0) {
+    emit(doc.index, 0);
+  }
+}
+
+### Fonction Reduce
+
+_sum
+
+---
+
+## 2.4 MapReduce pour le calcul du produit M · W
+
+On souhaite calculer le vecteur φ tel que :
+
+φi = Σj Mij × wj
+
+Hypothèse : le vecteur W est stocké en mémoire et accessible globalement.
+
+### Principe du traitement
+
+- Map : pour chaque document, calculer la somme partielle des produits Mij × wj ;
+- Reduce : sommer les contributions pour chaque ligne i.
+
+### Fonction Map
+
+function (doc) {
+  if (doc.type !== "page" || !doc.outlinks) return;
+  var total = 0;
+  for (var k = 0; k < doc.outlinks.length; k++) {
+    var j = doc.outlinks[k].j;
+    var mij = doc.outlinks[k].weight;
+    if (W[j] !== undefined) {
+      total += mij * W[j];
+    }
+  }
+  emit(doc.index, total);
+}
+
+### Fonction Reduce
+
+_sum
+
+---
+
+## 3. Installation et Déploiement de CouchDB
+
+### 3.1 Création du volume Docker
+
+docker volume create couchdb_data
+
+---
+
+### 3.2 Lancement de CouchDB
+
+docker run \
+--name couchdb \
+-e COUCHDB_USER=admin \
+-e COUCHDB_PASSWORD=admin \
+-p 5984:5984 \
+-v couchdb_data:/opt/couchdb/data \
+-d couchdb
+
+---
+
+### 3.3 Interface Web
+
+Interface d’administration accessible à l’adresse suivante :
+
+http://localhost:5984/_utils/
+
+---
+
+### 3.4 Test de connexion HTTP
+
+curl -X GET http://admin:admin@localhost:5984
+
+---
+
+## 4. Création et Gestion des Bases
+
+### 4.1 Création d’une base de données
+
+curl -X PUT http://admin:admin@localhost:5984/films
+
+---
+
+### 4.2 Insertion de documents
+
+Insertion simple :
+
+curl -X POST http://admin:admin@localhost:5984/films \
+-H "Content-Type: application/json" \
+-d '{"title":"Inception","year":2010,"actors":["Leonardo DiCaprio"]}'
+
+Insertion en lot :
+
+curl -X POST http://admin:admin@localhost:5984/films/_bulk_docs \
+-H "Content-Type: application/json" \
+-d @films_couchdb.json
+
+---
+
+### 4.3 Lecture d’un document
+
+curl -X GET http://admin:admin@localhost:5984/films/<id_document>
+
+---
+
+### 4.4 Mise à jour d’un document
+
+curl -X PUT http://admin:admin@localhost:5984/films/<id_document> \
+-H "Content-Type: application/json" \
+-d '{"_rev":"1-xxx","title":"Dune","year":2021}'
+
+---
+
+## 5. Définition de Vues MapReduce
+
+### 5.1 Comptage des films par année
+
+Fonction Map :
+
+function (doc) {
+  if (doc.year) {
+    emit(doc.year, 1);
+  }
+}
+
+Fonction Reduce :
+
+_sum
+
+---
+
+### 5.2 Indexation des films par acteur
+
+Fonction Map :
+
+function (doc) {
+  if (doc.actors) {
+    doc.actors.forEach(function(actor) {
+      emit(actor, doc.title);
+    });
+  }
+}
+
+Fonction Reduce :
+
+_count
+
+---
+
+## 6. Conclusion
+
+CouchDB propose une approche simple et robuste du stockage distribué grâce à son modèle orienté documents et à son API REST.  
+Le mécanisme MapReduce permet d’effectuer des calculs distribués directement au niveau de la base, ce qui en fait un outil pertinent pour l’analyse de données à grande échelle.
+
+---
